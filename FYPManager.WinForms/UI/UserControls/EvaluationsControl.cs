@@ -8,12 +8,15 @@ public partial class EvaluationsControl : UserControl
 {
     private BindingSource _evaluationsBindingSource = new();
     private BindingSource _groupEntriesBindingSource = new();
+    private List<GroupListItem> _allGroups = new();
+    private List<EvaluationListItem> _allEvaluations = new();
 
     public EvaluationsControl(AppServices services)
     {
         Services = services;
         InitializeComponent();
         ConfigureGrids();
+        cboEvaluations.SelectedIndexChanged += cboEvaluations_SelectedIndexChanged;
     }
 
     private AppServices Services { get; }
@@ -42,14 +45,14 @@ public partial class EvaluationsControl : UserControl
     private async Task LoadMarkingLookupsAsync()
     {
         OperationResult<IReadOnlyList<GroupListItem>> groupsResult = await Services.GroupBL.SearchGroupsAsync(null);
+        _allGroups = groupsResult.Data?.ToList() ?? new List<GroupListItem>();
         cboGroups.DisplayMember = nameof(GroupListItem.Id);
         cboGroups.ValueMember = nameof(GroupListItem.Id);
-        cboGroups.DataSource = groupsResult.Data?.ToList() ?? new List<GroupListItem>();
+        cboGroups.DataSource = _allGroups;
 
         OperationResult<IReadOnlyList<EvaluationListItem>> evaluationsResult = await Services.EvaluationBL.SearchAsync(null);
-        cboEvaluations.DisplayMember = nameof(EvaluationListItem.Name);
-        cboEvaluations.ValueMember = nameof(EvaluationListItem.Id);
-        cboEvaluations.DataSource = evaluationsResult.Data?.ToList() ?? new List<EvaluationListItem>();
+        _allEvaluations = evaluationsResult.Data?.ToList() ?? new List<EvaluationListItem>();
+        RefreshAvailableEvaluations();
     }
 
     private async Task LoadEvaluationsAsync()
@@ -79,12 +82,53 @@ public partial class EvaluationsControl : UserControl
         {
             _groupEntriesBindingSource = new BindingSource { DataSource = Array.Empty<GroupEvaluationEntryItem>() };
             dgvGroupEntries.DataSource = _groupEntriesBindingSource;
+            RefreshAvailableEvaluations();
             return;
         }
 
         OperationResult<IReadOnlyList<GroupEvaluationEntryItem>> result = await Services.EvaluationBL.GetGroupEvaluationsAsync(groupId);
         _groupEntriesBindingSource = new BindingSource { DataSource = result.Data?.ToList() ?? new List<GroupEvaluationEntryItem>() };
         dgvGroupEntries.DataSource = _groupEntriesBindingSource;
+        RefreshAvailableEvaluations();
+    }
+
+    private void RefreshAvailableEvaluations()
+    {
+        HashSet<int> usedEvaluationIds = _groupEntriesBindingSource.List
+            .Cast<GroupEvaluationEntryItem>()
+            .Select(x => x.EvaluationId)
+            .ToHashSet();
+
+        List<EvaluationListItem> availableEvaluations = _allEvaluations
+            .Where(x => !usedEvaluationIds.Contains(x.Id))
+            .ToList();
+
+        cboEvaluations.DisplayMember = nameof(EvaluationListItem.Name);
+        cboEvaluations.ValueMember = nameof(EvaluationListItem.Id);
+        cboEvaluations.DataSource = availableEvaluations;
+
+        btnRecordMarks.Enabled = availableEvaluations.Count > 0 && cboGroups.SelectedValue is int;
+        UpdateMarksMaximum();
+    }
+
+    private void UpdateMarksMaximum()
+    {
+        if (cboEvaluations.SelectedItem is EvaluationListItem evaluation)
+        {
+            nudObtainedMarks.Maximum = Math.Max(0, evaluation.TotalMarks);
+            if (nudObtainedMarks.Value > nudObtainedMarks.Maximum)
+            {
+                nudObtainedMarks.Value = nudObtainedMarks.Maximum;
+            }
+
+            lblMarksField.Text = $"Obtained Marks (Max {evaluation.TotalMarks})";
+        }
+        else
+        {
+            nudObtainedMarks.Value = 0;
+            nudObtainedMarks.Maximum = 1000;
+            lblMarksField.Text = "Obtained Marks";
+        }
     }
 
     private void ToggleBusyState(bool isBusy)
@@ -198,6 +242,11 @@ public partial class EvaluationsControl : UserControl
         {
             await LoadGroupEntriesAsync();
         }
+    }
+
+    private void cboEvaluations_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        UpdateMarksMaximum();
     }
 
     private async void btnRecordMarks_Click(object sender, EventArgs e)

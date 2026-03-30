@@ -12,64 +12,96 @@ public sealed class PdfHelper
 {
     public void GenerateProjectListReport(string filePath, IReadOnlyList<ProjectReportRow> rows)
     {
-        using PdfWriter writer = new(filePath);
-        using PdfDocument pdf = new(writer);
-        using Document document = new(pdf);
-
-        AddReportHeader(document, "Project List Report");
-
-        if (rows.Count == 0)
+        GeneratePdf(filePath, document =>
         {
-            document.Add(new Paragraph("No project data is available."));
-            return;
-        }
+            AddReportHeader(document, "Project List Report");
 
-        Table table = CreateTable(new float[] { 3, 1, 2.5f, 2, 2.5f, 2 });
-        AddHeaderRow(table, "Project", "Group", "Advisor", "Role", "Student", "Reg. No.");
+            if (rows.Count == 0)
+            {
+                document.Add(new Paragraph("No project data is available."));
+                return;
+            }
 
-        foreach (ProjectReportRow row in rows)
-        {
-            AddBodyCell(table, row.ProjectTitle);
-            AddBodyCell(table, row.GroupId?.ToString() ?? "-");
-            AddBodyCell(table, row.AdvisorName ?? "-");
-            AddBodyCell(table, row.AdvisorRoleValue ?? "-");
-            AddBodyCell(table, row.StudentName ?? "-");
-            AddBodyCell(table, row.RegistrationNo ?? "-");
-        }
+            Table table = CreateTable(new float[] { 3, 1, 2.5f, 2, 2.5f, 2 });
+            AddHeaderRow(table, "Project", "Group", "Advisor", "Role", "Student", "Reg. No.");
 
-        document.Add(table);
+            foreach (ProjectReportRow row in rows)
+            {
+                AddBodyCell(table, row.ProjectTitle);
+                AddBodyCell(table, row.GroupId?.ToString() ?? "-");
+                AddBodyCell(table, row.AdvisorName ?? "-");
+                AddBodyCell(table, row.AdvisorRoleValue ?? "-");
+                AddBodyCell(table, row.StudentName ?? "-");
+                AddBodyCell(table, row.RegistrationNo ?? "-");
+            }
+
+            document.Add(table);
+        });
     }
 
     public void GenerateMarksSheetReport(string filePath, IReadOnlyList<MarksReportRow> rows)
     {
-        using PdfWriter writer = new(filePath);
-        using PdfDocument pdf = new(writer);
-        using Document document = new(pdf);
-
-        AddReportHeader(document, "Marks Sheet Report");
-
-        if (rows.Count == 0)
+        GeneratePdf(filePath, document =>
         {
-            document.Add(new Paragraph("No marks data is available."));
-            return;
-        }
+            AddReportHeader(document, "Marks Sheet Report");
 
-        Table table = CreateTable(new float[] { 2.5f, 1, 2, 2.2f, 2.2f, 1.3f, 1.3f, 1.2f });
-        AddHeaderRow(table, "Project", "Group", "Reg. No.", "Student", "Evaluation", "Total", "Obtained", "Weight");
+            if (rows.Count == 0)
+            {
+                document.Add(new Paragraph("No marks data is available."));
+                return;
+            }
 
-        foreach (MarksReportRow row in rows)
+            Table table = CreateTable(new float[] { 2.5f, 1, 2, 2.2f, 2.2f, 1.3f, 1.3f, 1.2f });
+            AddHeaderRow(table, "Project", "Group", "Reg. No.", "Student", "Evaluation", "Total", "Obtained", "Weight");
+
+            foreach (MarksReportRow row in rows)
+            {
+                AddBodyCell(table, row.ProjectTitle);
+                AddBodyCell(table, row.GroupId?.ToString() ?? "-");
+                AddBodyCell(table, string.IsNullOrWhiteSpace(row.RegistrationNo) ? "-" : row.RegistrationNo);
+                AddBodyCell(table, string.IsNullOrWhiteSpace(row.StudentName) ? "-" : row.StudentName);
+                AddBodyCell(table, row.EvaluationName);
+                AddBodyCell(table, row.TotalMarks.ToString());
+                AddBodyCell(table, row.ObtainedMarks.ToString());
+                AddBodyCell(table, row.TotalWeightage.ToString());
+            }
+
+            document.Add(table);
+        });
+    }
+
+    private static void GeneratePdf(string filePath, Action<Document> buildDocument)
+    {
+        string directoryPath = Path.GetDirectoryName(filePath) ?? AppContext.BaseDirectory;
+        Directory.CreateDirectory(directoryPath);
+
+        string tempFilePath = Path.Combine(directoryPath, $"{Guid.NewGuid():N}.tmp.pdf");
+
+        try
         {
-            AddBodyCell(table, row.ProjectTitle);
-            AddBodyCell(table, row.GroupId?.ToString() ?? "-");
-            AddBodyCell(table, string.IsNullOrWhiteSpace(row.RegistrationNo) ? "-" : row.RegistrationNo);
-            AddBodyCell(table, string.IsNullOrWhiteSpace(row.StudentName) ? "-" : row.StudentName);
-            AddBodyCell(table, row.EvaluationName);
-            AddBodyCell(table, row.TotalMarks.ToString());
-            AddBodyCell(table, row.ObtainedMarks.ToString());
-            AddBodyCell(table, row.TotalWeightage.ToString());
-        }
+            using (PdfWriter writer = new(tempFilePath))
+            using (PdfDocument pdf = new(writer))
+            using (Document document = new(pdf))
+            {
+                buildDocument(document);
+            }
 
-        document.Add(table);
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+
+            File.Move(tempFilePath, filePath);
+        }
+        catch
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+
+            throw;
+        }
     }
 
     private static void AddReportHeader(Document document, string title)

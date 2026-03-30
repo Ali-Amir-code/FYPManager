@@ -14,6 +14,12 @@ public partial class ReportsControl : UserControl
 
     private AppServices Services { get; }
 
+    private void ToggleBusyState(bool isBusy)
+    {
+        btnProjectReport.Enabled = !isBusy;
+        btnMarksReport.Enabled = !isBusy;
+    }
+
     private void ShowBanner(string message, bool isSuccess, IEnumerable<string>? details = null)
     {
         lblStatus.Text = details is null || !details.Any()
@@ -35,11 +41,13 @@ public partial class ReportsControl : UserControl
             return;
         }
 
+        ToggleBusyState(true);
         OperationResult result = await Services.ReportBL.GenerateProjectListReportAsync(dialog.FileName);
+        ToggleBusyState(false);
         ShowBanner(result.Message, result.Succeeded, result.Errors);
         if (result.Succeeded)
         {
-            Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
+            TryOpenFile(dialog.FileName);
         }
     }
 
@@ -56,11 +64,25 @@ public partial class ReportsControl : UserControl
             return;
         }
 
+        ToggleBusyState(true);
         OperationResult result = await Services.ReportBL.GenerateMarksSheetReportAsync(dialog.FileName);
+        ToggleBusyState(false);
         ShowBanner(result.Message, result.Succeeded, result.Errors);
         if (result.Succeeded)
         {
-            Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
+            TryOpenFile(dialog.FileName);
+        }
+    }
+
+    private void TryOpenFile(string filePath)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ShowBanner("Report was generated, but the file could not be opened automatically.", false, new[] { ex.Message });
         }
     }
 }
